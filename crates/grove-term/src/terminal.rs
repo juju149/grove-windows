@@ -109,7 +109,9 @@ impl Terminal {
         env.entry("TERM".into()).or_insert_with(|| "xterm-256color".into());
         env.entry("COLORTERM".into()).or_insert_with(|| "truecolor".into());
         let pty_options = tty::Options {
-            shell: Some(tty::Shell::new(options.program, options.args)),
+            shell: Some(tty::Shell::new(program_for_pty(options.program), options.args)),
+            #[cfg(windows)]
+            escape_args: true,
             working_directory: options.cwd.clone(),
             drain_on_exit: true,
             env,
@@ -128,8 +130,7 @@ impl Terminal {
         let config = term::Config { scrolling_history: options.scrollback, ..Default::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, listener.clone())));
         let graphics = Arc::new(Mutex::new(Graphics::default()));
-        let pty = GraphicsPty::new(pty, graphics.clone(), listener.sender.clone(), listener.on_event.clone())
-            .context("création du PTY")?;
+        let pty = GraphicsPty::new(pty, graphics.clone(), listener.sender.clone(), listener.on_event.clone());
 
         let event_loop = EventLoop::new(term.clone(), listener.clone(), pty, true, false)
             .context("démarrage de la boucle d'E/S du terminal")?;
@@ -558,7 +559,41 @@ impl EventListener for Listener {
     }
 }
 
-#[cfg(test)]
+fn program_for_pty(program: String) -> String {
+    // Le backend ConPTY d'alacritty ajoute les arguments au programme tel quel.
+    #[cfg(windows)]
+    if program.contains([' ', '\t']) {
+        return format!("\"{program}\"");
+    }
+    program
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn conpty_runs_a_windows_program() {
+    let mut options = TerminalOptions::new("cmd.exe");
+    options.args = ["/d", "/q", "/k", "echo hello grove"].map(str::to_owned).to_vec();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let terminal = Terminal::spawn(options, move |event| {
+        if let TerminalEvent::Exited(code) = event {
+            let _ = tx.send(code);
+        }
+    }).unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let snapshot = terminal.snapshot();
+        if (0..snapshot.lines).any(|row| snapshot.line_text(row).contains("hello grove")) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "sortie de cmd.exe absente");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    terminal.write(&b"exit 0\r"[..]);
+    assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap(), Some(0));
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use std::sync::mpsc;
     use std::time::{Duration, Instant};

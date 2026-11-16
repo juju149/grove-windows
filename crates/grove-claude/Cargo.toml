@@ -6,12 +6,19 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+grove-core.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 jiff = "0.2"
-libc.workspace = true
 ureq = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+uds_windows = "1.2"
+windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tempfile.workspace = true

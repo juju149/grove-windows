@@ -459,6 +459,7 @@ impl TerminalView {
                 cx.notify();
             }
             // Clic du milieu : colle la sélection primaire, comme les autres terminaux sous Linux.
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             MouseButton::Middle => {
                 if let Some(text) = cx.read_from_primary().and_then(|item| item.text()) {
                     self.paste(&text);
@@ -476,6 +477,7 @@ impl TerminalView {
         }
         if event.button == MouseButton::Left && std::mem::take(&mut self.selecting) {
             // Ce qui est sélectionné devient la sélection primaire (collée au clic du milieu).
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             if let Some(text) = self.terminal.selection_text() {
                 cx.write_to_primary(ClipboardItem::new_string(text));
             }

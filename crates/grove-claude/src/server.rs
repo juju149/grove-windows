@@ -1,11 +1,18 @@
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(windows)]
+use uds_windows::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 
 use crate::protocol::{Message, MessageKind};
+
+pub(crate) fn connect(path: impl AsRef<Path>) -> std::io::Result<UnixStream> {
+    UnixStream::connect(path)
+}
 
 /// Réponse à une demande de permission, sur la connexion qui l'a apportée.
 /// Détruite sans réponse, elle ferme la connexion : la demande est refusée.
@@ -14,6 +21,7 @@ pub struct Reply(Option<UnixStream>);
 impl Reply {
     pub fn send(mut self, value: &serde_json::Value) {
         if let Some(mut stream) = self.0.take() {
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
             let _ = stream.write_all(format!("{value}\n").as_bytes());
         }
     }
@@ -23,6 +31,8 @@ impl Reply {
 /// Le socket est supprimé quand la valeur est détruite.
 pub struct EventServer {
     path: PathBuf,
+    shutdown: std::sync::mpsc::Sender<()>,
+    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl EventServer {
@@ -34,9 +44,28 @@ impl EventServer {
         let _ = std::fs::remove_file(path);
         let listener = UnixListener::bind(path).with_context(|| format!("écoute sur {}", path.display()))?;
 
-        std::thread::Builder::new().name("grove-claude-events".into()).spawn(move || {
-            for stream in listener.incoming() {
-                let Ok(stream) = stream else { continue };
+        listener.set_nonblocking(true)?;
+        let (shutdown, stop) = std::sync::mpsc::channel();
+        let thread = std::thread::Builder::new().name("grove-claude-events".into()).spawn(move || {
+            while let Err(std::sync::mpsc::TryRecvError::Empty) = stop.try_recv() {
+                let stream = match listener.accept() {
+                    Ok((stream, _)) => stream,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+                            stop.recv_timeout(Duration::from_millis(25))
+                        {
+                            continue;
+                        }
+                        break;
+                    }
+                    Err(err) => {
+                        log::warn!("connexion au socket Claude : {err}");
+                        break;
+                    }
+                };
+                if stream.set_nonblocking(false).is_err() {
+                    continue;
+                }
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                 let mut line = String::new();
                 let mut reader = BufReader::new(stream);
@@ -53,7 +82,7 @@ impl EventServer {
                 }
             }
         })?;
-        Ok(Self { path: path.to_owned() })
+        Ok(Self { path: path.to_owned(), shutdown, thread: Some(thread) })
     }
 
     pub fn path(&self) -> &Path {
@@ -63,6 +92,10 @@ impl EventServer {
 
 impl Drop for EventServer {
     fn drop(&mut self) {
+        let _ = self.shutdown.send(());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
         let _ = std::fs::remove_file(&self.path);
     }
 }
@@ -70,7 +103,6 @@ impl Drop for EventServer {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-    use std::os::unix::net::UnixStream;
     use std::sync::mpsc;
 
     use super::*;

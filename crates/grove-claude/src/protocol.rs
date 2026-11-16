@@ -35,10 +35,12 @@ pub fn socket_path(fallback_dir: &Path) -> PathBuf {
         .filter(|d| !d.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| fallback_dir.to_owned());
+    #[cfg(target_os = "linux")]
     remove_stale_sockets(&dir);
     dir.join(format!("grove-{}.sock", std::process::id()))
 }
 
+#[cfg(target_os = "linux")]
 fn remove_stale_sockets(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {

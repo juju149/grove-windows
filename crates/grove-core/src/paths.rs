@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
+
+pub fn home_dir() -> Option<PathBuf> {
+    BaseDirs::new().map(|dirs| dirs.home_dir().to_owned())
+}
 
 /// Emplacements des fichiers de Grove.
 ///
@@ -31,7 +35,7 @@ impl Paths {
         self.data_dir.join("state.json")
     }
 
-    /// Jeton GitHub saisi dans les Paramètres (droits 600).
+    /// Jeton GitHub saisi dans les Paramètres.
     pub fn github_token_file(&self) -> PathBuf {
         self.data_dir.join("github-token")
     }

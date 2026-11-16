@@ -103,7 +103,7 @@ impl Default for FontConfig {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TerminalConfig {
-    /// Shell lancé dans les onglets. Par défaut : `$SHELL`, sinon `/bin/sh`.
+    /// Shell lancé dans les onglets. Par défaut : Git Bash sous Windows, `$SHELL` ou `/bin/sh` sous Unix.
     pub shell: Option<String>,
     pub scrollback: usize,
     /// Profil des nouveaux onglets (`Ctrl+Shift+T`, `+`). Par défaut : le shell.
@@ -163,8 +163,29 @@ impl Config {
         self.terminal
             .shell
             .clone()
-            .or_else(|| std::env::var("SHELL").ok().filter(|s| !s.is_empty()))
-            .unwrap_or_else(|| "/bin/sh".into())
+            .unwrap_or_else(default_shell)
+    }
+}
+
+/// Git Bash conserve la syntaxe des profils et des scripts de projet sous Windows.
+pub fn default_shell() -> String {
+    #[cfg(not(windows))]
+    {
+        std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/sh".into())
+    }
+    #[cfg(windows)]
+    {
+        // Préférer Git for Windows à l'ancien lanceur bash.exe de WSL.
+        ["ProgramW6432", "ProgramFiles", "LOCALAPPDATA"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .flat_map(|root| {
+                let root = std::path::PathBuf::from(root);
+                [root.join("Git/bin/bash.exe"), root.join("Programs/Git/bin/bash.exe")]
+            })
+            .find(|path| path.is_file())
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "bash.exe".into())
     }
 }
 

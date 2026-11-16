@@ -3217,6 +3217,7 @@ name = "grove-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dunce",
  "env_logger",
  "gpui",
  "grove-claude",
@@ -3240,13 +3241,16 @@ name = "grove-claude"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "grove-core",
  "jiff",
  "libc",
  "log",
  "serde",
  "serde_json",
  "tempfile",
+ "uds_windows",
  "ureq",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

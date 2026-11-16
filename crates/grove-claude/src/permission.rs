@@ -7,7 +7,7 @@
 //! de l'utilisateur sur la même connexion.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
+use crate::server::connect;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -110,7 +110,7 @@ fn ask_grove(arguments: &Value) -> Value {
     };
     let message = Message { tab, kind: MessageKind::Permission, payload: arguments.clone() };
     let reply = (|| -> std::io::Result<String> {
-        let mut stream = UnixStream::connect(socket)?;
+        let mut stream = connect(socket)?;
         let mut line = serde_json::to_vec(&message)?;
         line.push(b'\n');
         stream.write_all(&line)?;

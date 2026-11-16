@@ -57,10 +57,11 @@ pub(crate) struct LinkFinder {
 
 impl LinkFinder {
     pub fn new(base: Option<PathBuf>) -> Self {
+        let separator = if cfg!(windows) { r"[/\\]" } else { "/" };
         Self {
             url: RegexSearch::new(URL_REGEX).expect("expression des URL valide"),
-            // Un mot qui contient au moins un `/` ; son existence est vérifiée ensuite.
-            path: RegexSearch::new(&format!("{PATH_CHAR}*/{PATH_CHAR}+")).expect("expression des chemins valide"),
+            // Un mot qui contient au moins un séparateur ; son existence est vérifiée ensuite.
+            path: RegexSearch::new(&format!("{PATH_CHAR}*{separator}{PATH_CHAR}+")).expect("expression des chemins valide"),
             base,
         }
     }
@@ -131,7 +132,7 @@ fn link_at<T>(
         return Some(Link { uri, path: None, line: None, column: None, start, end });
     }
     let (text, start, end) = matched(path_regex)?;
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = std::env::home_dir();
     let (path, line, column) = resolve_path(&text, base, home.as_deref())?;
     Some(Link { uri: text, path: Some(path), line, column, start, end })
 }
@@ -158,12 +159,16 @@ fn resolve_path(text: &str, base: Option<&Path>, home: Option<&Path>) -> Option<
         [line] => (Some(line), None),
         _ => (None, None),
     };
-    let path = if let Some(rest) = text.strip_prefix("~/") {
+    let home_relative = text.strip_prefix("~/").or_else(|| {
+        if cfg!(windows) { text.strip_prefix("~\\") } else { None }
+    });
+    let path = Path::new(text);
+    let path = if let Some(rest) = home_relative {
         home?.join(rest)
-    } else if text.starts_with('/') {
-        PathBuf::from(text)
+    } else if path.has_root() {
+        path.to_owned()
     } else {
-        base?.join(text)
+        base?.join(path)
     };
     path.exists().then_some((path, line, column))
 }
@@ -217,6 +222,14 @@ mod tests {
         assert_eq!(resolve_path("src/main.rs:42:7", base, None), Some((main, Some(42), Some(7))));
         assert_eq!(path("./src", base, None), Some(dir.path().join("./src")));
         assert_eq!(path("~/notes-2026.txt", None, base), Some(dir.path().join("notes-2026.txt")));
+        #[cfg(windows)]
+        {
+            assert_eq!(path(r"~\notes-2026.txt", None, base), Some(file));
+            assert_eq!(
+                resolve_path(r"src\main.rs:42:7", base, None),
+                Some((dir.path().join(r"src\main.rs"), Some(42), Some(7)))
+            );
+        }
         // Inexistant, ou relatif sans dossier de base : pas un lien.
         assert_eq!(resolve_path("src/absent.rs", base, None), None);
         assert_eq!(resolve_path("et/ou", base, None), None);

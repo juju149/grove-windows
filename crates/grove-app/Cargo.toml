@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+dunce = "1"
 env_logger.workspace = true
 gpui.workspace = true
 image.workspace = true

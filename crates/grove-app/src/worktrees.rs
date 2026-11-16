@@ -167,7 +167,7 @@ impl GroveView {
         let live: Vec<PathBuf> = worktrees
             .iter()
             .filter(|w| !w.main && !w.prunable)
-            .map(|w| w.path.canonicalize().unwrap_or_else(|_| w.path.clone()))
+            .map(|w| dunce::canonicalize(&w.path).unwrap_or_else(|_| w.path.clone()))
             .collect();
         let Some(p) = self.state.projects.iter_mut().find(|p| p.id == project) else { return };
 
@@ -780,14 +780,14 @@ fn prepare(root: &Path, target: &NewWorktree, mode: DialogMode, trusted: bool) -
         NewWorktree::NewBranch { base, .. } => base.clone(),
         _ => String::new(),
     };
-    let path = path.canonicalize().unwrap_or(path);
+    let path = dunce::canonicalize(&path).unwrap_or(path);
     Ok(Created { path, branch, base, setup: config.setup_commands(root), untrusted: !trusted })
 }
 
 /// Script de l'onglet « setup » : les commandes, leur code de sortie, puis un shell.
 fn setup_script(commands: &[String]) -> String {
     let chain = commands.join(" && ");
-    format!("{chain}; code=$?; echo; echo \"[setup terminé, code $code]\"; exec \"$SHELL\" -i")
+    format!("{chain}; code=$?; echo; echo \"[setup terminé, code $code]\"; exec \"${{SHELL:-$0}}\" -i")
 }
 
 #[cfg(test)]
@@ -846,7 +846,7 @@ mod tests {
         std::fs::write(root.join("a.txt"), "en cours").unwrap();
         let target = NewWorktree::NewBranch { name: "wip".into(), base: "HEAD".into() };
         let created = prepare_worktree(&root, &target, DialogMode::Promote).unwrap();
-        assert_eq!(created.path, dir.path().join("app.worktrees/wip").canonicalize().unwrap());
+        assert_eq!(created.path, dunce::canonicalize(dir.path().join("app.worktrees/wip")).unwrap());
         assert_eq!(std::fs::read_to_string(created.path.join("a.txt")).unwrap(), "en cours");
         assert_eq!(grove_git::checkout_status(&root).unwrap().changed, 0);
     }
@@ -865,6 +865,6 @@ mod tests {
     fn setup_script_keeps_a_shell() {
         let script = setup_script(&["npm ci".into(), "cp ../app/.env .env".into()]);
         assert!(script.starts_with("npm ci && cp ../app/.env .env; code=$?"));
-        assert!(script.ends_with("exec \"$SHELL\" -i"));
+        assert!(script.ends_with("exec \"${SHELL:-$0}\" -i"));
     }
 }

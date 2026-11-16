@@ -150,11 +150,13 @@ fn non_empty(value: &Option<String>) -> Option<&str> {
 }
 
 pub fn expand_home(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
-        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
-        _ if path == "~" => std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| path.into()),
-        _ => PathBuf::from(path),
-    }
+    let relative = match path {
+        "~" => Some(""),
+        _ => path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")),
+    };
+    relative
+        .and_then(|rest| crate::paths::home_dir().map(|home| home.join(rest)))
+        .unwrap_or_else(|| path.into())
 }
 
 /// D'où vient un profil, du plus prioritaire au moins prioritaire.

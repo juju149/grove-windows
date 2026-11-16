@@ -912,8 +912,8 @@ impl GroveView {
             .child(section_title("Terminal"))
             .child(setting_row(
                 "Shell",
-                "Lancé dans les onglets terminal et pour les commandes des profils. Vide : $SHELL.",
-                self.render_field(FieldId::Shell, "$SHELL", px(260.0), cx),
+                "Lancé dans les onglets terminal et pour les commandes des profils. Vide : shell par défaut (Git Bash sous Windows).",
+                self.render_field(FieldId::Shell, if cfg!(windows) { "Git Bash" } else { "$SHELL" }, px(260.0), cx),
             ))
             .child(setting_row(
                 "Scrollback",

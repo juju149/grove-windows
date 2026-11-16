@@ -405,7 +405,7 @@ impl GroveView {
 
     /// Ajoute le projet `path` (ou retrouve celui qui existe) et l'active.
     pub fn open_project(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
+        let path = dunce::canonicalize(path).unwrap_or_else(|_| path.to_owned());
         let existed = self.state.projects.iter().any(|p| p.root == path);
         let id = self.state.add_project(&path);
         let project = self.state.project(id).expect("projet ajouté");

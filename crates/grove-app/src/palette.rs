@@ -86,7 +86,12 @@ impl GroveView {
                 (grove_core::WorkspaceKind::Direct, None) => "dossier principal".to_owned(),
             };
             let label = format!("Aller à {} › {name}", project.name);
-            let detail = workspace.path.display().to_string().replace(&std::env::var("HOME").unwrap_or_default(), "~");
+            let detail = grove_core::paths::home_dir()
+                .and_then(|home| workspace.path.strip_prefix(home).ok())
+                .map(|relative| std::path::Path::new("~").join(relative))
+                .unwrap_or_else(|| workspace.path.clone())
+                .display()
+                .to_string();
             items.push(item(label, detail, String::new(), Target::Workspace((project.id, workspace.id))));
         }
         let focus = cx.focus_handle();

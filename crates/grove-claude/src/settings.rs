@@ -27,7 +27,10 @@ const EVENTS: &[(&str, bool)] = &[
 /// Écrit le fichier de réglages. `grove` : chemin de l'exécutable, qui sert
 /// de client de hook (`grove hook`, `grove statusline`).
 pub fn write_settings(path: &Path, grove: &Path) -> Result<()> {
-    let exe = shell_quote(&grove.to_string_lossy());
+    let exe = grove.to_string_lossy();
+    #[cfg(windows)]
+    let exe = exe.replace('\\', "/");
+    let exe = shell_quote(&exe);
     let hook = json!({ "type": "command", "command": format!("{exe} hook"), "timeout": 5 });
 
     let mut hooks = Map::new();
@@ -108,7 +111,7 @@ pub(crate) fn claude_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(dir));
     }
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude"))
+    grove_core::paths::home_dir().map(|home| home.join(".claude"))
 }
 
 fn shell_quote(s: &str) -> String {

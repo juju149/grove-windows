@@ -6,7 +6,12 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+mod windows_job;
+#[cfg(windows)]
+use windows_job::Job;
 use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -87,7 +92,10 @@ pub enum NativeEvent {
 pub struct NativeProcess {
     stdin: Mutex<Option<ChildStdin>>,
     /// Groupe de processus (pid du shell).
+    #[cfg(unix)]
     pgid: i32,
+    #[cfg(windows)]
+    job: Job,
 }
 
 impl NativeProcess {
@@ -99,15 +107,25 @@ impl NativeProcess {
             .envs(&options.env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        command.process_group(0);
+        #[cfg(windows)]
+        let job = Job::new()?;
         if let Some(cwd) = &options.cwd {
             command.current_dir(cwd);
         }
         let mut child = command.spawn().with_context(|| format!("lancement de {}", options.shell))?;
+        #[cfg(windows)]
+        if let Err(err) = job.assign(&child) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(err).context("association de Claude au job Windows");
+        }
         let stdin = child.stdin.take();
         let stdout = child.stdout.take().context("stdout du processus")?;
         let stderr = child.stderr.take().context("stderr du processus")?;
+        #[cfg(unix)]
         let pgid = child.id() as i32;
 
         let tail = Arc::new(Mutex::new(String::new()));
@@ -143,7 +161,13 @@ impl NativeProcess {
             on_event(NativeEvent::Exited { code, stderr });
         })?;
 
-        Ok(Self { stdin: Mutex::new(stdin), pgid })
+        Ok(Self {
+            stdin: Mutex::new(stdin),
+            #[cfg(unix)]
+            pgid,
+            #[cfg(windows)]
+            job,
+        })
     }
 
     /// Écrit une ligne sur stdin (message utilisateur en stream-json).
@@ -159,9 +183,13 @@ impl NativeProcess {
     /// Interrompt le tour en cours. En mode `-p`, Claude Code s'arrête : la
     /// session se reprend avec `--resume` au message suivant.
     pub fn interrupt(&self) {
+        #[cfg(unix)]
         self.signal(libc::SIGINT);
+        #[cfg(windows)]
+        self.job.terminate();
     }
 
+    #[cfg(unix)]
     fn signal(&self, signal: i32) {
         // SAFETY : `kill` n'a pas d'effet sur la mémoire ; pgid négatif = tout le groupe.
         unsafe {
@@ -173,6 +201,7 @@ impl NativeProcess {
 impl Drop for NativeProcess {
     fn drop(&mut self) {
         self.stdin.lock().unwrap().take();
+        #[cfg(unix)]
         self.signal(libc::SIGTERM);
     }
 }
@@ -209,7 +238,11 @@ mod tests {
     /// Un faux `claude` (`cat`, qui renvoie ses entrées) : aller-retour stdin → stdout, puis arrêt.
     #[test]
     fn echoes_lines_and_reports_exit() {
-        let options = NativeOptions { shell: "/bin/sh".into(), command: "cat; echo oups >&2; exit 4 #".into(), ..Default::default() };
+        #[cfg(windows)]
+        let shell = grove_core::config::default_shell();
+        #[cfg(unix)]
+        let shell = "/bin/sh".to_owned();
+        let options = NativeOptions { shell, command: "cat; echo oups >&2; exit 4 #".into(), ..Default::default() };
         let (tx, rx) = mpsc::channel();
         let process = NativeProcess::spawn(&options, move |event| {
             let _ = tx.send(event);
@@ -223,6 +256,6 @@ mod tests {
         // Le shell interactif sans terminal se plaint aussi du contrôle des tâches.
         let NativeEvent::Exited { code, stderr } = rx.recv_timeout(timeout).unwrap() else { panic!("fin attendue") };
         assert_eq!(code, Some(4));
-        assert!(stderr.ends_with("oups"), "{stderr}");
+        assert!(stderr.lines().any(|line| line == "oups"), "{stderr}");
     }
 }

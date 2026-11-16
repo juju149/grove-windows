@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenSource {
-    /// Saisi dans les Paramètres, gardé dans un fichier lisible par l'utilisateur seul.
+    /// Saisi dans les Paramètres et enregistré dans le dossier de données.
     Manual,
     /// Celui de la CLI GitHub (`gh auth login`).
     GhCli,
@@ -70,29 +70,21 @@ pub fn read_manual_token(path: &Path) -> Option<String> {
     Some(text.trim().to_owned()).filter(|t| !t.is_empty())
 }
 
-/// Écrit le jeton, lisible par l'utilisateur seul.
+/// Écrit le jeton avec les droits 600 sous Unix et les ACL du dossier sous Windows.
 pub fn save_manual_token(path: &Path, token: &str) -> Result<()> {
     let token = token.trim();
     if !looks_like_token(token) {
         bail!("ce n'est pas un jeton GitHub (ghp_…, github_pat_…)");
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("création de {}", dir.display()))?;
-    }
-    let tmp = path.with_extension("tmp");
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)
-            .with_context(|| format!("écriture de {}", tmp.display()))?;
-        writeln!(file, "{token}")?;
-    }
-    std::fs::rename(&tmp, path).with_context(|| format!("écriture de {}", path.display()))
+    use std::io::Write;
+
+    let dir = path.parent().filter(|dir| !dir.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(dir).with_context(|| format!("création de {}", dir.display()))?;
+    let mut file = tempfile::NamedTempFile::new_in(dir)
+        .with_context(|| format!("création d'un fichier temporaire dans {}", dir.display()))?;
+    writeln!(file, "{token}")?;
+    file.persist(path).with_context(|| format!("écriture de {}", path.display()))?;
+    Ok(())
 }
 
 pub fn remove_manual_token(path: &Path) -> Result<()> {
@@ -104,6 +96,7 @@ pub fn remove_manual_token(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
@@ -117,9 +110,13 @@ mod tests {
 
         save_manual_token(&path, "  ghp_0123456789abcdefghijWXYZ\n").unwrap();
         assert_eq!(read_manual_token(&path).as_deref(), Some("ghp_0123456789abcdefghijWXYZ"));
+        #[cfg(unix)]
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         let token = resolve_token(&path, "/bin/false").unwrap();
         assert_eq!(token.source, TokenSource::Manual);
+
+        save_manual_token(&path, "ghp_replacement123456789").unwrap();
+        assert_eq!(read_manual_token(&path).as_deref(), Some("ghp_replacement123456789"));
 
         remove_manual_token(&path).unwrap();
         remove_manual_token(&path).unwrap();

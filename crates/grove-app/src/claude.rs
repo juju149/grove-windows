@@ -121,6 +121,7 @@ impl GroveView {
     /// Options du PTY d'un onglet Claude : `claude` lancé par le shell interactif
     /// de l'utilisateur, avec les réglages de Grove en plus des siens.
     pub(crate) fn claude_options(&mut self, tab: TabId, cwd: PathBuf, session_id: Option<&str>) -> TerminalOptions {
+        let mut options = self.terminal_options(cwd);
         let mut command = self.config.claude.command.clone();
         if let Some(settings) = &self.claude.settings_file {
             command.push_str(&format!(" --settings {}", shell_quote(&settings.to_string_lossy())));
@@ -131,9 +132,20 @@ impl GroveView {
         // Premier message de la session (review d'une PR…).
         if let Some(prompt) = self.pending_prompts.remove(&tab) {
             command.push_str(&format!(" {}", shell_quote(&prompt)));
+            #[cfg(windows)]
+            if prompt.starts_with('/') {
+                // Git Bash traite un argument comme « /review … » comme un chemin.
+                let key = "MSYS2_ARG_CONV_EXCL";
+                let prefix = prompt.split(|c: char| c.is_whitespace() || c == ';').next().unwrap_or(&prompt);
+                let mut exclusions = std::env::var(key).unwrap_or_default();
+                if !exclusions.is_empty() {
+                    exclusions.push(';');
+                }
+                exclusions.push_str(prefix);
+                options.env.insert(key.into(), exclusions);
+            }
         }
 
-        let mut options = self.terminal_options(cwd);
         options.args = vec!["-i".into(), "-c".into(), command];
         options.env.insert(grove_claude::ENV_TAB_ID.into(), tab.to_string());
         if let Some(server) = &self.claude.server {

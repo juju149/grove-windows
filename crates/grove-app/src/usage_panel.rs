@@ -116,7 +116,7 @@ impl GroveView {
             .collect();
         let work = cx.background_executor().spawn(async move {
             let records = scanner.lock().map(|mut s| s.scan()).unwrap_or_default();
-            aggregate(&records, &projects, std::env::var_os("HOME").map(PathBuf::from).as_deref())
+            aggregate(&records, &projects, grove_core::paths::home_dir().as_deref())
         });
         panel._task = Some(cx.spawn(async move |this, cx| {
             let cells = work.await;

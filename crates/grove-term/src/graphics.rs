@@ -496,6 +496,9 @@ fn check_size(width: u32, height: u32) -> Result<(), String> {
 /// d'un segment de mémoire partagée POSIX supprimé ensuite (`s`).
 fn read_medium(medium: u8, name: &str, offset: u32, size: u32) -> io::Result<Vec<u8>> {
     let path = if medium == b's' {
+        if cfg!(windows) {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, "mémoire partagée POSIX indisponible"));
+        }
         let name = name.trim_start_matches('/');
         if name.is_empty() || name.contains('/') {
             return Err(io::Error::other("nom de mémoire partagée invalide"));

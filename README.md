@@ -24,6 +24,39 @@ commandes, vue diff des modifications, usage Claude par jour et par projet.
 
 ## Compiler
 
+### Windows
+
+Grove se compile en application Windows native et utilise ConPTY pour ses
+terminaux. Prévoir Windows 10 version 1809 ou ultérieure, Rust stable avec la
+cible `x86_64-pc-windows-msvc`, Visual Studio Build Tools avec la charge
+« Développement Desktop en C++ » et un SDK Windows, ainsi que Git for Windows.
+
+Depuis PowerShell, à la racine du dépôt :
+
+```powershell
+cargo run --locked -p grove-app -- .
+cargo test --locked --workspace
+cargo build --locked --release -p grove-app
+.\target\release\grove.exe
+```
+
+Git Bash est le shell par défaut sous Windows. Pour une installation de Git
+ailleurs que dans les dossiers habituels, renseigner le chemin de `bash.exe`
+dans Paramètres › Terminal ou dans `[terminal] shell` :
+
+```toml
+[terminal]
+shell = 'D:\Outils\Git\bin\bash.exe'
+```
+
+Les profils de commande et scripts de setup utilisent la syntaxe Bash. Les
+onglets Claude nécessitent que `claude` soit accessible dans Git Bash. La
+sélection se copie avec `Ctrl+Shift+C` et se colle avec `Ctrl+Shift+V` sous
+Windows. Le collage de la sélection primaire au clic du milieu est propre aux
+plateformes qui disposent de ce presse-papiers.
+
+### Linux
+
 Dépendances système (Ubuntu/Debian) :
 
 ```
@@ -35,7 +68,7 @@ cargo run -p grove-app [-- <dossier>]   # restaure la session ; <dossier> est aj
 cargo test --workspace
 ```
 
-## Installer
+## Installer sous Linux
 
 ```
 ./scripts/install.sh               # compile en release et installe (ou met à jour)
@@ -47,7 +80,7 @@ associé à la fenêtre par son `app_id`) dans `~/.local/share`. Pour mettre à 
 `git pull` puis relancer le script, puis redémarrer Grove ; une instance ouverte
 garde l'ancien binaire jusqu'à sa fermeture.
 
-## Distribuer
+## Distribuer sous Linux
 
 ```
 ./scripts/package.sh               # → dist/grove-<version>-x86_64-linux.tar.gz
@@ -109,7 +142,7 @@ souris (double-clic : moitié-moitié). Disposition et proportions sont
 restaurées au redémarrage ; un shell qui quitte ferme son volet.
 
 Sélection dans le terminal : glisser, double-clic (mot), triple-clic (ligne).
-Elle devient la sélection primaire, collée par un clic milieu. Quand le
+Sous Linux, elle devient la sélection primaire, collée par un clic milieu. Quand le
 programme capte la souris (vim, htop, certains TUI), `Shift` garde la
 sélection pour Grove.
 
@@ -148,7 +181,8 @@ Images : protocole graphique de kitty, en placements virtuels (caractères
 U+10EEEE, le mode de Claude Code et de `kitten icat --unicode-placeholder`).
 Images PNG ou pixels bruts, transmises en ligne, par fichier ou par mémoire
 partagée. Les placements classiques (image posée au curseur) ne sont pas
-affichés. Claude Code n'active les images que pour kitty et Ghostty : Grove
+affichés. Le transfert via la mémoire partagée POSIX est propre à Linux.
+Claude Code n'active les images que pour kitty et Ghostty : Grove
 lance ses PTY avec `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`, ce qui affiche par
 exemple les vignettes du plugin `claude-image-view`.
 
@@ -172,6 +206,11 @@ branche locale et la distante ont divergé, rien n'est fait et un message le dit
   scrollback et commandes valent pour les prochains onglets).
 - `~/.local/share/grove/state.json` : état restauré au démarrage (phase 1)
 - `~/.local/share/grove/github-token` : jeton GitHub saisi dans les Paramètres (droits 600)
+
+Sous Windows, la configuration se trouve dans `%APPDATA%\grove\config` et les
+données dans `%APPDATA%\grove\data`. Le fichier `github-token` hérite des droits
+d'accès au dossier de données. Utiliser un dossier privé si son emplacement
+est personnalisé.
 
 `GROVE_CONFIG_DIR` et `GROVE_DATA_DIR` remplacent ces dossiers.
 
@@ -233,7 +272,8 @@ Un onglet Claude lance `claude --settings ~/.local/share/grove/claude-settings.j
 via le shell interactif (alias et fonctions conservés ; commande réglable par
 `[claude] command`). Ce fichier ajoute des hooks et une statusline qui appellent
 `grove hook` / `grove statusline` : ils transmettent le JSON reçu au socket de
-l'app (`$XDG_RUNTIME_DIR/grove-<pid>.sock`). La statusline de l'utilisateur
+l'app (`$XDG_RUNTIME_DIR/grove-<pid>.sock` sous Linux si ce dossier est défini,
+sinon dans le dossier de données). La statusline de l'utilisateur
 (`~/.claude/settings.json`) est appelée en chaîne. `[claude] notifications = false`
 coupe les notifications système.
 

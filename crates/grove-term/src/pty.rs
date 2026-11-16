@@ -2,7 +2,6 @@
 //! graphiques sont exécutées avant que le parseur ne voie le reste du flux.
 //! Le [`ProgressScanner`] y repère aussi la barre de progression.
 
-use std::fs::File;
 use std::io::{self, Read};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -26,12 +25,8 @@ impl GraphicsPty {
         graphics: Arc<Mutex<Graphics>>,
         replies: Arc<OnceLock<EventLoopSender>>,
         on_event: Arc<dyn Fn(TerminalEvent) + Send + Sync>,
-    ) -> io::Result<Self> {
-        // Second descripteur sur le même PTY (non bloquant lui aussi) : la boucle
-        // d'E/S surveille l'original et lit par celui-ci.
-        let file = pty.file().try_clone()?;
+    ) -> Self {
         let reader = FilteredReader {
-            file,
             filter: ApcFilter::default(),
             graphics,
             replies,
@@ -41,12 +36,11 @@ impl GraphicsPty {
             pending: Vec::new(),
             read_from: 0,
         };
-        Ok(Self { pty, reader })
+        Self { pty, reader }
     }
 }
 
-pub(crate) struct FilteredReader {
-    file: File,
+struct FilteredReader {
     filter: ApcFilter,
     graphics: Arc<Mutex<Graphics>>,
     replies: Arc<OnceLock<EventLoopSender>>,
@@ -58,8 +52,11 @@ pub(crate) struct FilteredReader {
     read_from: usize,
 }
 
-impl Read for FilteredReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+impl FilteredReader {
+    fn read(&mut self, source: &mut impl Read, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
         loop {
             if self.read_from < self.pending.len() {
                 let available = &self.pending[self.read_from..];
@@ -72,7 +69,7 @@ impl Read for FilteredReader {
             self.read_from = 0;
 
             // `WouldBlock` et la fin du flux remontent tels quels à la boucle d'E/S.
-            let got = self.file.read(&mut self.raw)?;
+            let got = source.read(&mut self.raw)?;
             if got == 0 {
                 return Ok(0);
             }
@@ -91,9 +88,15 @@ impl Read for FilteredReader {
     }
 }
 
+impl Read for GraphicsPty {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.reader.read(self.pty.reader(), buf)
+    }
+}
+
 impl EventedReadWrite for GraphicsPty {
-    type Reader = FilteredReader;
-    type Writer = File;
+    type Reader = Self;
+    type Writer = <Pty as EventedReadWrite>::Writer;
 
     unsafe fn register(&mut self, poll: &Arc<Poller>, interest: Event, mode: PollMode) -> io::Result<()> {
         unsafe { self.pty.register(poll, interest, mode) }
@@ -107,11 +110,11 @@ impl EventedReadWrite for GraphicsPty {
         self.pty.deregister(poll)
     }
 
-    fn reader(&mut self) -> &mut FilteredReader {
-        &mut self.reader
+    fn reader(&mut self) -> &mut Self::Reader {
+        self
     }
 
-    fn writer(&mut self) -> &mut File {
+    fn writer(&mut self) -> &mut Self::Writer {
         self.pty.writer()
     }
 }

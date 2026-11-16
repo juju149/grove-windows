@@ -2,7 +2,7 @@
 //! Toute erreur est ignorée en silence (code de sortie 0, rien sur stdout).
 
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use crate::server::connect;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
@@ -51,7 +51,7 @@ fn send(kind: MessageKind, input: &[u8]) {
         return;
     };
     line.push(b'\n');
-    let Ok(mut stream) = UnixStream::connect(socket) else {
+    let Ok(mut stream) = connect(socket) else {
         return;
     };
     let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
@@ -60,7 +60,11 @@ fn send(kind: MessageKind, input: &[u8]) {
 
 /// Lance la statusline de l'utilisateur avec la même entrée et renvoie sa sortie.
 fn chain(command: &str, input: &[u8]) -> Option<String> {
-    let mut child = Command::new("sh")
+    #[cfg(windows)]
+    let shell = grove_core::config::default_shell();
+    #[cfg(unix)]
+    let shell = "sh";
+    let mut child = Command::new(shell)
         .args(["-c", command])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

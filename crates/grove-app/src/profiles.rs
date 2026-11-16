@@ -34,8 +34,8 @@ impl ProfileCatalog {
     }
 
     pub fn reload_ssh(&mut self) {
-        self.ssh_hosts = std::env::var_os("HOME")
-            .map(|home| grove_core::profile::ssh_hosts(&PathBuf::from(home).join(".ssh/config")))
+        self.ssh_hosts = grove_core::paths::home_dir()
+            .map(|home| grove_core::profile::ssh_hosts(&home.join(".ssh/config")))
             .unwrap_or_default();
     }
 }
