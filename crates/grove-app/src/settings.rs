@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
 use gpui::{AnyElement, Context, FocusHandle, KeyDownEvent, Pixels, SharedString, Task, Window, div, prelude::*, px};
-use grove_core::{ClaudeView, Config, ConfigFile, Profile, ProfileKind, ProfileSource, ProjectId, Reconnect, ResolvedProfile, TabKind};
+use grove_core::{AgentProvider, ClaudeView, Config, ConfigFile, Profile, ProfileKind, ProfileSource, ProjectId, Reconnect, ResolvedProfile, TabKind};
 
 use crate::grove_view::{GroveView, ToggleSidebar};
 use crate::profiles::{detail, profile_icon, source_label};
@@ -23,7 +23,7 @@ pub(crate) enum Section {
     General,
     Terminal,
     Profiles,
-    Claude,
+    Agents,
     GitHub,
     Shortcuts,
 }
@@ -32,7 +32,7 @@ const SECTIONS: [(Section, &str, Icon); 6] = [
     (Section::General, "Général", Icon::Settings),
     (Section::Terminal, "Terminal", Icon::Terminal),
     (Section::Profiles, "Profils", Icon::Server),
-    (Section::Claude, "Claude", Icon::Claude),
+    (Section::Agents, "Agents", Icon::Terminal),
     (Section::GitHub, "GitHub", Icon::GitPullRequest),
     (Section::Shortcuts, "Raccourcis clavier", Icon::Keyboard),
 ];
@@ -182,6 +182,7 @@ impl GroveView {
         self.profiles.reload_ssh();
         self.branch_picker = None;
         self.profile_picker = None;
+        self.agent_picker = None;
         self.rename = None;
         let section = section.or(self.settings.as_ref().map(|s| s.section)).unwrap_or(Section::General);
         let focus = cx.focus_handle();
@@ -695,7 +696,7 @@ impl GroveView {
             Section::General => self.render_general(cx),
             Section::Terminal => self.render_terminal_settings(cx),
             Section::Profiles => self.render_profiles_settings(cx),
-            Section::Claude => self.render_claude_settings(cx),
+            Section::Agents => self.render_agent_settings(cx),
             Section::GitHub => self.render_github_settings(cx),
             Section::Shortcuts => self.render_shortcuts(cx),
         };
@@ -929,11 +930,26 @@ impl GroveView {
             .into_any_element()
     }
 
-    fn render_claude_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_agent_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         let claude = &self.config.claude;
         let view = claude.view;
         let views = [(ClaudeView::Terminal, "Terminal (TUI officiel)"), (ClaudeView::Native, "Vue native")];
         div()
+            .child(section_title("Agents"))
+            .child(setting_row(
+                "Agent par défaut",
+                "Ouvert par le bouton de la barre d'onglets et par Ctrl+Shift+A.",
+                segmented(AgentProvider::ALL.into_iter().map(|provider| {
+                    let selected = provider == self.config.agents.default_provider;
+                    (provider.name(), selected, cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                        this.commit_edit(cx);
+                        this.write_setting(cx, |file| {
+                            file.set(&["agents", "default_provider"], provider.command());
+                            Ok(())
+                        });
+                    }))
+                })),
+            ))
             .child(section_title("Claude"))
             .child(setting_row(
                 "Commande",

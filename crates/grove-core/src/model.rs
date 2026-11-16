@@ -96,6 +96,14 @@ impl Workspace {
         self.add_tab(TabKind::Terminal { profile })
     }
 
+    /// Ajoute un onglet pour l'agent choisi, avec la vue Claude configurée.
+    pub fn add_agent_tab(&mut self, provider: crate::AgentProvider, claude_view: ClaudeView) -> TabId {
+        match provider {
+            crate::AgentProvider::Claude => self.add_claude_tab(None, claude_view),
+            _ => self.add_tab(TabKind::Agent { provider }),
+        }
+    }
+
     /// Ajoute un onglet Claude ; `session_id` pour reprendre une session existante.
     pub fn add_claude_tab(&mut self, session_id: Option<String>, view: ClaudeView) -> TabId {
         self.add_tab(TabKind::Claude { session_id, view })
@@ -188,6 +196,8 @@ pub enum TabKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         profile: Option<String>,
     },
+    /// Agent CLI lancé dans le terminal de cet espace.
+    Agent { provider: crate::AgentProvider },
     /// Session Claude Code. `session_id` est connu après `SessionStart`
     /// et sert à reprendre la session au redémarrage (`--resume`).
     Claude {

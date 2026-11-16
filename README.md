@@ -109,7 +109,7 @@ le script) et un pilote Vulkan (`mesa-vulkan-drivers`).
 | `Ctrl+Shift+R` | Renommer l'onglet (ou double-clic ; titre vide = titre du programme) |
 | `Ctrl+Shift+O` | Ajouter un projet |
 | `Ctrl+Shift+B` | Afficher / masquer la sidebar |
-| `Ctrl+Shift+A` | Nouvel onglet Claude |
+| `Ctrl+Shift+A` | Nouvel onglet avec l'agent par défaut |
 | `Ctrl+Shift+J` | Aller à la prochaine session Claude qui attend une réponse |
 | `Ctrl+Shift+I` | Afficher / masquer le panneau de session (modèle, coût, contexte, tâches planifiées) |
 | `Ctrl+Shift+H` | Sessions passées de l'espace (clic = reprendre) |
@@ -265,6 +265,22 @@ Les worktrees créés ou supprimés hors de Grove (Claude Code, `git worktree` d
 un terminal) apparaissent et disparaissent aussitôt de la sidebar : `.git/worktrees`
 est surveillé. Un espace où une session Claude travaille est gardé jusqu'au
 changement suivant.
+
+## Agents CLI
+
+Dans la barre d'onglets, cliquer sur le nom de l'agent ouvre une nouvelle
+session avec l'agent par défaut. La flèche à côté permet de choisir Claude,
+Codex ou Gemini pour un nouvel onglet dans le même espace de travail.
+
+Le choix par défaut se règle dans Paramètres › Agents. Claude est sélectionné
+au départ. Codex et Gemini utilisent leurs interfaces terminal. Leurs commandes
+`codex` et `gemini` doivent être accessibles depuis le shell de Grove (Git Bash
+par défaut sous Windows).
+
+```toml
+[agents]
+default_provider = "claude" # claude, codex ou gemini
+```
 
 ## Claude Code
 

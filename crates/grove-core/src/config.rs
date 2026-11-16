@@ -10,8 +10,44 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub font: FontConfig,
     pub terminal: TerminalConfig,
+    pub agents: AgentConfig,
     pub claude: ClaudeConfig,
     pub github: GitHubConfig,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentConfig {
+    pub default_provider: AgentProvider,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProvider {
+    #[default]
+    Claude,
+    Codex,
+    Gemini,
+}
+
+impl AgentProvider {
+    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Gemini];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude",
+            Self::Codex => "Codex",
+            Self::Gemini => "Gemini",
+        }
+    }
+
+    pub fn command(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+        }
+    }
 }
 
 /// Actions Claude sur les pull requests (specs §12.1), surchargeables dans `.grove.toml`.
@@ -223,6 +259,16 @@ mod tests {
         assert_eq!(config.font.size, 16.0);
         assert_eq!(config.font.family, "monospace");
         assert_eq!(config.terminal.scrollback, 10_000);
+        assert_eq!(config.agents.default_provider, AgentProvider::Claude);
+    }
+
+    #[test]
+    fn parses_default_agent_provider() {
+        for provider in AgentProvider::ALL {
+            let text = format!("[agents]\ndefault_provider = \"{}\"", provider.command());
+            let config: Config = toml::from_str(&text).unwrap();
+            assert_eq!(config.agents.default_provider, provider);
+        }
     }
 
     #[test]

@@ -309,30 +309,6 @@ impl GroveView {
         }
     }
 
-    pub(crate) fn new_claude_tab(&mut self, session_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(key) = self.state.active_workspace else { return };
-        self.leave_settings(cx);
-        if let Some(workspace) = self.state.workspace_mut(key) {
-            let shared = workspace.kind == grove_core::WorkspaceKind::Direct
-                && workspace.tabs.iter().any(|t| matches!(t.kind, TabKind::Claude { .. }));
-            if shared {
-                self.notice = Some(crate::worktrees::Notice {
-                    workspace: key.1,
-                    text: "Plusieurs sessions Claude dans le même dossier : elles modifient les mêmes fichiers.".into(),
-                    suggest_worktree: true,
-                });
-            }
-            workspace.add_claude_tab(session_id, self.config.claude.view);
-            self.claude.history = None;
-            self.github.panel = None;
-            self.diff = None;
-            self.usage_panel = None;
-            self.save();
-            self.focus_active(window, cx);
-            cx.notify();
-        }
-    }
-
     pub(crate) fn toggle_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.github.panel = None;
         self.diff = None;
@@ -395,7 +371,7 @@ impl GroveView {
                     .cursor_pointer()
                     .on_click(cx.listener({
                         let id = id.clone();
-                        move |this, _, window, cx| this.new_claude_tab(Some(id.clone()), window, cx)
+                        move |this, _, window, cx| this.resume_claude_tab(id.clone(), window, cx)
                     }))
                     .child(
                         icon(Icon::Claude, theme::text_faint()).group_hover(group, |s| s.text_color(theme::accent())),

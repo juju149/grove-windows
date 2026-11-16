@@ -14,6 +14,7 @@ use grove_core::{ClaudeView, Config, Paths, ProjectId, State, TabId, TabKind, Wo
 use grove_term::TerminalOptions;
 use grove_git::{CheckoutStatus, Head, HeadWatcher, WorktreesWatcher};
 
+use crate::agents::AgentPicker;
 use crate::branches::BranchPicker;
 use crate::worktrees::{DialogMode, Notice, RemoveDialog, WorktreeDialog};
 use crate::claude::ClaudeRuntime;
@@ -40,7 +41,7 @@ actions!(
         RenameTab,
         AddProject,
         ToggleSidebar,
-        NewClaudeTab,
+        NewAgentTab,
         NextWaiting,
         ToggleSessionPanel,
         ShowHistory,
@@ -75,7 +76,7 @@ pub fn key_bindings() -> Vec<gpui::KeyBinding> {
         KeyBinding::new("ctrl-shift-r", RenameTab, None),
         KeyBinding::new("ctrl-shift-o", AddProject, None),
         KeyBinding::new("ctrl-shift-b", ToggleSidebar, None),
-        KeyBinding::new("ctrl-shift-a", NewClaudeTab, None),
+        KeyBinding::new("ctrl-shift-a", NewAgentTab, None),
         KeyBinding::new("ctrl-shift-j", NextWaiting, None),
         KeyBinding::new("ctrl-shift-i", ToggleSessionPanel, None),
         KeyBinding::new("ctrl-shift-h", ShowHistory, None),
@@ -146,6 +147,7 @@ pub struct GroveView {
     pub(crate) claude: ClaudeRuntime,
     pub(crate) branch_picker: Option<BranchPicker>,
     pub(crate) profile_picker: Option<ProfilePicker>,
+    pub(crate) agent_picker: Option<AgentPicker>,
     /// Profils des projets et hôtes de `~/.ssh/config`.
     pub(crate) profiles: ProfileCatalog,
     /// Onglets SSH sans processus : pas encore connectés, ou connexion fermée.
@@ -258,6 +260,7 @@ impl GroveView {
             claude,
             branch_picker: None,
             profile_picker: None,
+            agent_picker: None,
             profiles: ProfileCatalog::default(),
             offline: HashMap::new(),
             settings: None,
@@ -465,6 +468,7 @@ impl GroveView {
         self.palette = None;
         self.branch_picker = None;
         self.profile_picker = None;
+        self.agent_picker = None;
         self.worktree_dialog = None;
         self.remove_dialog = None;
         self.save();
@@ -477,6 +481,7 @@ impl GroveView {
             return;
         };
         workspace.active_tab = Some(tab);
+        self.agent_picker = None;
         self.state.active_workspace = Some(key);
         self.github.panel = None;
         self.diff = None;
@@ -557,6 +562,7 @@ impl GroveView {
         // Onglet d'un profil : son nom, pas le titre du programme (`user@hôte: ~`).
         let profile = match tab_ref.map(|t| &t.kind) {
             Some(TabKind::Terminal { profile: Some(name) }) => Some(name.clone()),
+            Some(TabKind::Agent { provider }) => Some(provider.name().to_owned()),
             _ => None,
         };
         let claude = matches!(tab_ref.map(|t| &t.kind), Some(TabKind::Claude { .. }));
@@ -612,6 +618,7 @@ impl GroveView {
         let workspace = self.state.workspace(key)?;
         let cwd = workspace.path.clone();
         let kind = workspace.pane_owner(tab)?.pane_kind(tab)?.clone();
+        let agent_tab = matches!(kind, TabKind::Agent { .. });
         let options = match kind {
             TabKind::Terminal { .. } if self.offline.get(&tab) == Some(&Offline::NotConnected) => return None,
             TabKind::Terminal { profile } => {
@@ -631,6 +638,11 @@ impl GroveView {
                 }
                 options
             }
+            TabKind::Agent { provider } => {
+                let mut options = self.terminal_options(cwd);
+                options.args = ["-i", "-c", provider.command()].map(str::to_owned).to_vec();
+                options
+            }
             TabKind::Claude { view: ClaudeView::Native, .. } => return None,
             TabKind::Claude { session_id, .. } => self.claude_options(tab, cwd, session_id.as_deref()),
         };
@@ -648,6 +660,9 @@ impl GroveView {
             let Some(pane) = this.terminals.iter().find(|(_, t)| *t == emitter).map(|(id, _)| *id) else { return };
             if this.is_ssh_tab(pane) {
                 this.offline.insert(pane, Offline::Closed(*code));
+                cx.notify();
+            } else if agent_tab && *code != Some(0) {
+                // Garder la sortie visible si le CLI manque ou signale une erreur.
                 cx.notify();
             } else {
                 this.close_pane(pane, window, cx);
@@ -995,7 +1010,7 @@ impl Render for GroveView {
             }))
             .on_action(cx.listener(Self::add_project))
             .on_action(cx.listener(Self::toggle_sidebar))
-            .on_action(cx.listener(|this, _: &NewClaudeTab, window, cx| this.new_claude_tab(None, window, cx)))
+            .on_action(cx.listener(|this, _: &NewAgentTab, window, cx| this.open_agent_tab(this.config.agents.default_provider, window, cx)))
             .on_action(cx.listener(|this, _: &NextWaiting, window, cx| this.next_waiting(window, cx)))
             .on_action(cx.listener(|this, _: &ShowHistory, window, cx| this.toggle_history(window, cx)))
             .on_action(cx.listener(|this, _: &ShowPullRequests, window, cx| this.toggle_pull_requests(window, cx)))

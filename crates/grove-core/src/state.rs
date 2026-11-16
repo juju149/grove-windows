@@ -107,8 +107,17 @@ mod tests {
         let project = state.add_project(Path::new("/home/me/code/grove"));
         let active = state.active_workspace.unwrap();
         assert_eq!(active.0, project);
-        state.workspace_mut(active).unwrap().add_terminal_tab();
-        state.workspace_mut(active).unwrap().add_claude_tab(Some("abc".into()), crate::ClaudeView::Native);
+        let workspace = state.workspace_mut(active).unwrap();
+        workspace.add_terminal_tab();
+        workspace.add_claude_tab(Some("abc".into()), crate::ClaudeView::Native);
+        for provider in crate::AgentProvider::ALL {
+            let tab = workspace.add_agent_tab(provider, crate::ClaudeView::Native);
+            let expected = match provider {
+                crate::AgentProvider::Claude => crate::TabKind::Claude { session_id: None, view: crate::ClaudeView::Native },
+                _ => crate::TabKind::Agent { provider },
+            };
+            assert_eq!(workspace.pane_owner(tab).unwrap().kind, expected);
+        }
 
         state.save(&path).unwrap();
         assert_eq!(State::load(&path).unwrap(), state);

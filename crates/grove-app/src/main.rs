@@ -1,3 +1,4 @@
+mod agents;
 mod branches;
 mod builtin_glyphs;
 mod claude;

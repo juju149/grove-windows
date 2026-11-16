@@ -72,6 +72,7 @@ impl GroveView {
         }
         self.branch_picker = None;
         self.profile_picker = None;
+        self.agent_picker = None;
         let mut items: Vec<Item> = crate::shortcuts::commands(&crate::grove_view::key_bindings())
             .into_iter()
             .filter(|(action, _)| action.name() != "grove::CommandPalette")

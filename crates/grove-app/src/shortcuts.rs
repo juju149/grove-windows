@@ -57,7 +57,7 @@ fn describe(action: &str) -> Option<(Group, &'static str)> {
         "grove::AddProject" => (Group::Workspaces, "Ajouter un projet"),
         "grove::NewWorkspace" => (Group::Workspaces, "Nouvel espace de travail (worktree)"),
         "grove::OpenBranches" => (Group::Branches, "Sélecteur de branches"),
-        "grove::NewClaudeTab" => (Group::Claude, "Nouvelle session Claude"),
+        "grove::NewAgentTab" => (Group::Tabs, "Nouvelle session avec l'agent par défaut"),
         "grove::NextWaiting" => (Group::Claude, "Prochaine session qui attend une réponse"),
         "grove::ToggleSessionPanel" => (Group::Claude, "Panneau de session"),
         "grove::ShowHistory" => (Group::Claude, "Sessions passées de l'espace"),

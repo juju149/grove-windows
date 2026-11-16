@@ -12,6 +12,7 @@ use grove_claude::ClaudeStatus;
 use grove_core::{ClaudeView, TabId, TabKind};
 use grove_term::Progress;
 
+use crate::agents::agent_icon;
 use crate::claude::status_badge;
 use crate::grove_view::{GroveView, NewTab, ToggleSidebar};
 use crate::marquee::marquee;
@@ -82,6 +83,7 @@ impl GroveView {
                 let claude_tab = active.is_some_and(|tab| self.claude.sessions.contains_key(&tab));
                 let native = active.and_then(|tab| self.claude_view(tab)) == Some(ClaudeView::Native);
 
+                let provider = self.config.agents.default_provider;
                 let sync = self.render_sync_button(key, cx);
                 bar.children(self.render_branch_chip(key, cx).map(|chip| {
                     div().flex().flex_none().items_center().child(chip).children(sync).child(vertical_divider())
@@ -110,8 +112,7 @@ impl GroveView {
                 )
                 .child(
                     div()
-                        .id("new-claude")
-                        .group("new-claude")
+                        .id("new-agent")
                         .h(px(26.0))
                         .px_2()
                         .flex()
@@ -123,10 +124,33 @@ impl GroveView {
                         .text_color(theme::text_muted())
                         .hover(|s| s.bg(theme::hover()).text_color(theme::text()))
                         .cursor_pointer()
-                        .tooltip(tooltip("Nouvelle session Claude · Ctrl+Shift+A"))
-                        .on_click(cx.listener(|this, _, window, cx| this.new_claude_tab(None, window, cx)))
-                        .child(icon(Icon::Claude, theme::accent()))
-                        .child("Claude"),
+                        .tooltip(tooltip(format!("Nouvelle session {} · Ctrl+Shift+A", provider.name())))
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_agent_tab(provider, window, cx)))
+                        .child(icon(agent_icon(provider), theme::accent()))
+                        .child(provider.name()),
+                )
+                .child(
+                    div()
+                        .relative()
+                        .flex_none()
+                        .child(
+                            icon_button("choose-agent", Icon::ChevronDown)
+                                .w(px(16.0))
+                                .when(self.agent_picker.is_some(), |b| b.bg(theme::selected()))
+                                .tooltip(tooltip("Choisir l'agent de la nouvelle session"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if !std::mem::take(&mut this.popover_dismissed) {
+                                        this.open_agent_picker(window, cx);
+                                    }
+                                })),
+                        )
+                        .when_some(self.render_agent_picker(cx), |button, picker| {
+                            button.child(
+                                div().absolute().top(relative(1.0)).left_0().child(gpui::deferred(
+                                    gpui::anchored().snap_to_window().child(picker),
+                                )),
+                            )
+                        }),
                 )
                 .child(drag_region(div().id("tab-bar-drag").flex_1().min_w(px(24.0)).h_full()))
                 .child(
@@ -193,6 +217,7 @@ impl GroveView {
                 icon(Icon::Claude, status_badge(&session.status).1).into_any_element()
             }
             (TabKind::Claude { .. }, None) => icon(Icon::Claude, theme::text_faint()).into_any_element(),
+            (TabKind::Agent { provider }, _) => icon(agent_icon(*provider), theme::text_muted()).into_any_element(),
             (TabKind::Terminal { .. }, _) => {
                 let glyph = self.tab_profile(id).map_or(Icon::Terminal, |p| crate::profiles::profile_icon(&p.profile));
                 icon(glyph, if is_active { theme::text_muted() } else { theme::text_faint() }).into_any_element()
@@ -296,7 +321,7 @@ impl GroveView {
         let key = self.locate_tab(tab)?;
         match self.state.workspace(key)?.tabs.iter().find(|t| t.id == tab)?.kind {
             TabKind::Claude { view, .. } => Some(view),
-            TabKind::Terminal { .. } => None,
+            TabKind::Terminal { .. } | TabKind::Agent { .. } => None,
         }
     }
 
